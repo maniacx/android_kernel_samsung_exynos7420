@@ -447,7 +447,9 @@ CONFIG_CMDLINE="androidboot.selinux=permissive androidboot.hardware=samsungexyno
 # CONFIG_CMDLINE_FROM_BOOTLOADER is not set
 CONFIG_CMDLINE_EXTEND=y
 # CONFIG_CMDLINE_FORCE is not set
-# CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE is not set
+CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE=y
+CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES="exynos7420-zeroflte_eur_open_03 exynos7420-zeroflte_eur_open_06 exynos7420-zeroflte_eur_open_01 exynos7420-zeroflte_eur_open_05 exynos7420-zeroflte_eur_open_07 exynos7420-zeroflte_eur_open_04 exynos7420-zeroflte_eur_open_00 exynos7420-zeroflte_eur_open_ds_00 exynos7420-zeroflte_eur_open_02"
+CONFIG_ARM64_APPENDED_DTB=y
 
 #
 # Userspace binary formats
