@@ -27,11 +27,7 @@ static unsigned char bbd_patch[] =
 #if defined(CONFIG_SENSORS_SSP_LUCKY)
 #include "bbd_patch_file_lucky.h"
 #elif defined(CONFIG_SENSORS_SSP_NOBLELTE) || defined(CONFIG_SENSORS_SSP_ZENLTE)
-#if ANDROID_VERSION < 70000			/* M OS*/
-#include "bbd_patch_file_noble_m.h"
-#else								/* N OS*/
 #include "bbd_patch_file_noble.h"
-#endif	
 #elif defined (CONFIG_SENSORS_SSP_VLTE)
 #include "bbd_patch_file_valley.h"
 #elif defined (CONFIG_SENSORS_SSP_MARINELTE)
