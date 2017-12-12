@@ -35,11 +35,7 @@ static unsigned char bbd_patch[] =
 #elif defined (CONFIG_SENSORS_SSP_MARINELTE)
 #include "bbd_patch_file.h"
 #else  // ZERO
-#if ANDROID_VERSION < 70000			/* M OS*/
-#include "bbd_new_patch_file_m.h"
-#else								/* N OS*/
 #include "bbd_new_patch_file.h"
-#endif	
 #endif
 };
 

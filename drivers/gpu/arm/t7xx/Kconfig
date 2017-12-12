@@ -11,12 +11,6 @@
 # Boston, MA  02110-1301, USA.
 #
 #
-config DDK_VERSION_OS
-	string "version"
-	default ANDROID_MAJOR_VERSION
-	help
-		Android OS major version
-
 menuconfig MALI_T7XX
 	tristate "Mali-T7XX support"
 	default y
@@ -29,8 +23,7 @@ menuconfig MALI_T7XX
 choice
 	prompt "version Configuration"
 	depends on MALI_T7XX
-	default MALI_R7P0 if DDK_VERSION_OS = "m"
-	default MALI_R15P0 if DDK_VERSION_OS = "n"
+	default MALI_R15P0
 
 	help
 	  Select the gpu support version.

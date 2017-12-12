@@ -20,11 +20,7 @@
 
 #if defined (CONFIG_SENSORS_SSP_NOBLELTE) \
 	|| defined (CONFIG_SENSORS_SSP_ZENLTE) /* Noble or Zen */
-#if ANDROID_VERSION < 70000			/* M OS*/
-#define SSP_FIRMWARE_REVISION_STM	16082200
-#else								/* N OS*/
 #define SSP_FIRMWARE_REVISION_STM	17010200
-#endif	
 #elif defined (CONFIG_SENSORS_SSP_VLTE) /* V */
 #define SSP_FIRMWARE_REVISION_STM	15071700
 #elif defined (CONFIG_SENSORS_SSP_ROYCELTE) /* Royce */
@@ -42,11 +38,7 @@
 /* Bootload mode cmd */
 #if defined (CONFIG_SENSORS_SSP_NOBLELTE) \
 	|| defined (CONFIG_SENSORS_SSP_ZENLTE) /* Noble or Zen */
-#if ANDROID_VERSION < 70000			/* M OS*/
-#define BL_FW_NAME			"ssp_stm_noble_m.fw"
-#else								/* N OS*/
 #define BL_FW_NAME			"ssp_stm_noble.fw"
-#endif		
 #elif defined (CONFIG_SENSORS_SSP_VLTE) /* V */
 #define BL_FW_NAME			"ssp_stm_v.fw"
 #elif defined (CONFIG_SENSORS_SSP_ROYCELTE)	/* Royce */
