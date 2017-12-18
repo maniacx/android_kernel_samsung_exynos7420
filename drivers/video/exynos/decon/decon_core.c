@@ -37,6 +37,7 @@
 #include <linux/debugfs.h>
 #include <linux/of_gpio.h>
 #include <linux/irq.h>
+#include <linux/display_state.h>
 
 #include <mach/regs-clock.h>
 #include <mach/exynos-pm.h>
@@ -180,6 +181,13 @@ void decon_dump(struct decon_device *decon)
 	msleep(17);
 
 	v4l2_subdev_call(decon->output_sd, core, ioctl, DSIM_IOC_DUMP, NULL);
+}
+
+bool display_on = true;
+
+bool is_display_on()
+{
+	return display_on;
 }
 
 /* ---------- CHECK FUNCTIONS ----------- */
@@ -1856,6 +1864,7 @@ static int decon_blank(int blank_mode, struct fb_info *info)
 			decon_err("failed to disable decon\n");
 			goto blank_exit;
 		}
+		display_on = false;
 		break;
 	case FB_BLANK_UNBLANK:
 		DISP_SS_EVENT_LOG(DISP_EVT_UNBLANK, &decon->sd, ktime_set(0, 0));
@@ -1864,6 +1873,7 @@ static int decon_blank(int blank_mode, struct fb_info *info)
 			decon_err("failed to enable decon\n");
 			goto blank_exit;
 		}
+		display_on = true;
 		break;
 	case FB_BLANK_VSYNC_SUSPEND:
 	case FB_BLANK_HSYNC_SUSPEND:
