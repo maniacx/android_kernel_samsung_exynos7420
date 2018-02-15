@@ -1287,7 +1287,7 @@ static int binder_inc_ref(struct binder_ref *ref, int strong,
 		ret = binder_inc_node(ref->node, strong, 1, target_list);
 		if (ret) {
 			atomic_dec(strong ? &ref->strong : &ref->weak);
-			smp_mb__after_atomic();
+			smp_mb__after_atomic_dec();
 		}
 	}
 
