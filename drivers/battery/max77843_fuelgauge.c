@@ -1871,7 +1871,8 @@ static int max77843_fg_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_ENERGY_FULL:
 		{
 			int fullcap = max77843_get_fuelgauge_value(fuelgauge, FG_FULLCAPNOM);
-			val->intval = fullcap * 100 / fuelgauge->battery_data->Capacity;
+			int capacity = fuelgauge->battery_data->Capacity / 2;
+			val->intval = fullcap * 100 / capacity;
 			pr_info("%s: asoc(%d), fullcap(0x%x)\n",
 				__func__, val->intval, fullcap);
 #if !defined(CONFIG_SEC_FACTORY)
