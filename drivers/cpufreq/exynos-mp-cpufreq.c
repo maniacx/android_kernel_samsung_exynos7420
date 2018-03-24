@@ -1174,10 +1174,7 @@ static ssize_t store_cpufreq_min_limit(struct kobject *kobj, struct attribute *a
 		}
 #endif
 		cluster1_input = min(cluster1_input, (int)freq_max[CL_ONE]);
-		if (exynos_info[CL_ZERO]->boost_freq)
-			cluster0_input = exynos_info[CL_ZERO]->boost_freq;
-		else
-			cluster0_input = core_max_qos_const[CL_ZERO].default_value;
+		cluster0_input = core_max_qos_const[CL_ZERO].default_value;
 	} else if (cluster1_input < (int)freq_min[CL_ONE]) {
 #ifdef CONFIG_SCHED_HMP
 		if (hmp_boosted) {

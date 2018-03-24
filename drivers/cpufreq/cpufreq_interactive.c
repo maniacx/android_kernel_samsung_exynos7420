@@ -82,6 +82,7 @@ struct cpufreq_interactive_tunables {
 	int usage_count;
 	/* Hi speed to bump to from lo speed when load burst (default max) */
 	unsigned int hispeed_freq;
+	unsigned int hispeed2_freq;
 	/* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 99
 	unsigned long go_hispeed_load;
@@ -108,10 +109,13 @@ struct cpufreq_interactive_tunables {
 	int nabove_hispeed_delay;
 	/* Non-zero means indefinite speed boost active */
 	int boost_val;
+	int boost2_val;
 	/* Duration of a boot pulse in usecs */
 	int boostpulse_duration_val;
+	int boostpulse2_duration_val;
 	/* End time of boost pulse in ktime converted to usecs */
 	u64 boostpulse_endtime;
+	u64 boostpulse2_endtime;
 	/*
 	 * Max additional time to wait in idle, beyond timer_rate, at speeds
 	 * above minimum before wakeup to reduce speed, or -1 if unnecessary.
@@ -401,10 +405,12 @@ static void cpufreq_interactive_timer(unsigned long data)
 	struct cpufreq_interactive_tunables *tunables =
 		pcpu->policy->governor_data;
 	unsigned int new_freq;
+	unsigned int new_freq2;
 	unsigned int loadadjfreq;
 	unsigned int index;
 	unsigned long flags;
 	bool boosted;
+	bool boosted2;
 	if (!down_read_trylock(&pcpu->enable_sem))
 		return;
 	if (!pcpu->governor_enabled)
@@ -424,15 +430,24 @@ static void cpufreq_interactive_timer(unsigned long data)
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
 	cpu_load = loadadjfreq / pcpu->target_freq;
 	boosted = tunables->boost_val || now < tunables->boostpulse_endtime;
+	boosted2 = tunables->boost2_val || now < tunables->boostpulse2_endtime;
 
-	if (cpu_load >= tunables->go_hispeed_load || boosted) {
-		if (pcpu->target_freq < tunables->hispeed_freq) {
+	if (cpu_load >= tunables->go_hispeed_load || boosted || boosted2) {
+		if (pcpu->target_freq < tunables->hispeed2_freq && boosted2 ) {
+			new_freq2 = tunables->hispeed2_freq;
+		} else {
+			new_freq2 = 0;
+		}
+		if (pcpu->target_freq < tunables->hispeed_freq && boosted ) {
 			new_freq = tunables->hispeed_freq;
 		} else {
 			new_freq = choose_freq(pcpu, loadadjfreq);
 
 			if (new_freq < tunables->hispeed_freq)
 				new_freq = tunables->hispeed_freq;
+		}
+		if (new_freq2 > new_freq && boosted2) {
+			new_freq = new_freq2;
 		}
 	} else {
 		new_freq = choose_freq(pcpu, loadadjfreq);
@@ -486,7 +501,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	 * (or the indefinite boost is turned off).
 	 */
 
-	if (!boosted || new_freq > tunables->hispeed_freq) {
+	if (!boosted || !boosted2 ||new_freq > tunables->hispeed_freq) {
 		pcpu->floor_freq = new_freq;
 		pcpu->floor_validate_time = now;
 	}
@@ -703,6 +718,44 @@ static void cpufreq_interactive_boost(const struct cpufreq_policy *policy)
 		wake_up_process(tunables->speedchange_task);
 }
 
+static void cpufreq_interactive_boost2(const struct cpufreq_policy *policy)
+{
+	int i;
+	int anyboost = 0;
+	unsigned long flags[2];
+	struct cpufreq_interactive_cpuinfo *pcpu;
+	struct cpufreq_interactive_tunables *tunables;
+	struct cpumask boost_mask;
+
+	spin_lock_irqsave(&speedchange_cpumask_lock, flags[0]);
+
+	if (have_governor_per_policy())
+		cpumask_copy(&boost_mask, policy->cpus);
+	else
+		cpumask_copy(&boost_mask, cpu_online_mask);
+
+	for_each_cpu(i, &boost_mask) {
+		pcpu = &per_cpu(cpuinfo, i);
+		tunables = pcpu->policy->governor_data;
+
+		spin_lock_irqsave(&pcpu->target_freq_lock, flags[1]);
+		if (pcpu->target_freq < tunables->hispeed2_freq) {
+			pcpu->target_freq = tunables->hispeed2_freq;
+			cpumask_set_cpu(i, &speedchange_cpumask);
+			anyboost = 1;
+		}
+
+		pcpu->floor_freq = tunables->hispeed2_freq;
+		spin_unlock_irqrestore(&pcpu->target_freq_lock, flags[1]);
+	}
+
+	spin_unlock_irqrestore(&speedchange_cpumask_lock, flags[0]);
+
+
+	if (anyboost && tunables->speedchange_task)
+		wake_up_process(tunables->speedchange_task);
+}
+
 static int cpufreq_interactive_notifier(
 	struct notifier_block *nb, unsigned long val, void *data)
 {
@@ -893,6 +946,25 @@ static ssize_t store_hispeed_freq(struct cpufreq_interactive_tunables *tunables,
 	return count;
 }
 
+static ssize_t show_hispeed2_freq(struct cpufreq_interactive_tunables *tunables,
+		char *buf)
+{
+	return sprintf(buf, "%u\n", tunables->hispeed2_freq);
+}
+
+static ssize_t store_hispeed2_freq(struct cpufreq_interactive_tunables *tunables,
+		const char *buf, size_t count)
+{
+	int ret;
+	long unsigned int val;
+
+	ret = strict_strtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	tunables->hispeed2_freq = val;
+	return count;
+}
+
 static ssize_t show_go_hispeed_load(struct cpufreq_interactive_tunables
 		*tunables, char *buf)
 {
@@ -1001,6 +1073,34 @@ static ssize_t store_boost(struct cpufreq_interactive_tunables *tunables,
 	return count;
 }
 
+static ssize_t show_boost2(struct cpufreq_interactive_tunables *tunables,
+			  char *buf)
+{
+	return sprintf(buf, "%d\n", tunables->boost2_val);
+}
+
+static ssize_t store_boost2(struct cpufreq_interactive_tunables *tunables,
+			   const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+	struct cpufreq_policy *policy = container_of(tunables->policy,
+						struct cpufreq_policy, policy);
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	tunables->boost2_val = val;
+
+	if (tunables->boost2_val) {
+		cpufreq_interactive_boost2(policy);
+	} else {
+		tunables->boostpulse2_endtime = ktime_to_us(ktime_get());
+	}
+	return count;
+}
+
 static ssize_t store_boostpulse(struct cpufreq_interactive_tunables *tunables,
 				const char *buf, size_t count)
 {
@@ -1037,6 +1137,44 @@ static ssize_t store_boostpulse_duration(struct cpufreq_interactive_tunables
 		return ret;
 
 	tunables->boostpulse_duration_val = val;
+	return count;
+}
+
+static ssize_t store_boostpulse2(struct cpufreq_interactive_tunables *tunables,
+				const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+	struct cpufreq_policy *policy = container_of(tunables->policy,
+						struct cpufreq_policy, policy);
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	tunables->boostpulse2_endtime = ktime_to_us(ktime_get()) +
+		tunables->boostpulse2_duration_val;
+	cpufreq_interactive_boost2(policy);
+	return count;
+}
+
+static ssize_t show_boostpulse2_duration(struct cpufreq_interactive_tunables
+		*tunables, char *buf)
+{
+	return sprintf(buf, "%d\n", tunables->boostpulse2_duration_val);
+}
+
+static ssize_t store_boostpulse2_duration(struct cpufreq_interactive_tunables
+		*tunables, const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	tunables->boostpulse2_duration_val = val;
 	return count;
 }
 
@@ -1098,13 +1236,17 @@ store_gov_pol_sys(file_name)
 show_store_gov_pol_sys(target_loads);
 show_store_gov_pol_sys(above_hispeed_delay);
 show_store_gov_pol_sys(hispeed_freq);
+show_store_gov_pol_sys(hispeed2_freq);
 show_store_gov_pol_sys(go_hispeed_load);
 show_store_gov_pol_sys(min_sample_time);
 show_store_gov_pol_sys(timer_rate);
 show_store_gov_pol_sys(timer_slack);
 show_store_gov_pol_sys(boost);
+show_store_gov_pol_sys(boost2);
 store_gov_pol_sys(boostpulse);
+store_gov_pol_sys(boostpulse2);
 show_store_gov_pol_sys(boostpulse_duration);
+show_store_gov_pol_sys(boostpulse2_duration);
 show_store_gov_pol_sys(io_is_busy);
 
 #define gov_sys_attr_rw(_name)						\
@@ -1122,32 +1264,43 @@ __ATTR(_name, 0660, show_##_name##_gov_pol, store_##_name##_gov_pol)
 gov_sys_pol_attr_rw(target_loads);
 gov_sys_pol_attr_rw(above_hispeed_delay);
 gov_sys_pol_attr_rw(hispeed_freq);
+gov_sys_pol_attr_rw(hispeed2_freq);
 gov_sys_pol_attr_rw(go_hispeed_load);
 gov_sys_pol_attr_rw(min_sample_time);
 gov_sys_pol_attr_rw(timer_rate);
 gov_sys_pol_attr_rw(timer_slack);
 gov_sys_pol_attr_rw(boost);
+gov_sys_pol_attr_rw(boost2);
 gov_sys_pol_attr_rw(boostpulse_duration);
+gov_sys_pol_attr_rw(boostpulse2_duration);
 gov_sys_pol_attr_rw(io_is_busy);
 
 static struct global_attr boostpulse_gov_sys =
 	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_sys);
+static struct global_attr boostpulse2_gov_sys =
+	__ATTR(boostpulse2, 0200, NULL, store_boostpulse2_gov_sys);
 
 static struct freq_attr boostpulse_gov_pol =
 	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_pol);
+static struct freq_attr boostpulse2_gov_pol =
+	__ATTR(boostpulse2, 0200, NULL, store_boostpulse2_gov_pol);
 
 /* One Governor instance for entire system */
 static struct attribute *interactive_attributes_gov_sys[] = {
 	&target_loads_gov_sys.attr,
 	&above_hispeed_delay_gov_sys.attr,
 	&hispeed_freq_gov_sys.attr,
+	&hispeed2_freq_gov_sys.attr,
 	&go_hispeed_load_gov_sys.attr,
 	&min_sample_time_gov_sys.attr,
 	&timer_rate_gov_sys.attr,
 	&timer_slack_gov_sys.attr,
 	&boost_gov_sys.attr,
+	&boost2_gov_sys.attr,
 	&boostpulse_gov_sys.attr,
+	&boostpulse2_gov_sys.attr,
 	&boostpulse_duration_gov_sys.attr,
+	&boostpulse2_duration_gov_sys.attr,
 	&io_is_busy_gov_sys.attr,
 	NULL,
 };
@@ -1162,13 +1315,17 @@ static struct attribute *interactive_attributes_gov_pol[] = {
 	&target_loads_gov_pol.attr,
 	&above_hispeed_delay_gov_pol.attr,
 	&hispeed_freq_gov_pol.attr,
+	&hispeed2_freq_gov_pol.attr,
 	&go_hispeed_load_gov_pol.attr,
 	&min_sample_time_gov_pol.attr,
 	&timer_rate_gov_pol.attr,
 	&timer_slack_gov_pol.attr,
 	&boost_gov_pol.attr,
+	&boost2_gov_pol.attr,
 	&boostpulse_gov_pol.attr,
+	&boostpulse2_gov_pol.attr,
 	&boostpulse_duration_gov_pol.attr,
+	&boostpulse2_duration_gov_pol.attr,
 	&io_is_busy_gov_pol.attr,
 	NULL,
 };
@@ -1251,6 +1408,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			tunables->min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
 			tunables->timer_rate = DEFAULT_TIMER_RATE;
 			tunables->boostpulse_duration_val = DEFAULT_MIN_SAMPLE_TIME;
+			tunables->boostpulse2_duration_val = DEFAULT_MIN_SAMPLE_TIME;
 			tunables->timer_slack_val = DEFAULT_TIMER_SLACK;
 		} else {
 			memcpy(tunables, tuned_parameters[policy->cpu], sizeof(*tunables));
@@ -1316,6 +1474,8 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		freq_table = cpufreq_frequency_get_table(policy->cpu);
 		if (!tunables->hispeed_freq)
 			tunables->hispeed_freq = policy->max;
+		if (!tunables->hispeed2_freq)
+			tunables->hispeed2_freq = policy->max;
 
 		for_each_cpu(j, policy->cpus) {
 			pcpu = &per_cpu(cpuinfo, j);
@@ -1454,6 +1614,23 @@ unsigned int cpufreq_interactive_get_hispeed_freq(int cpu)
 		return 0;
 
 	return tunables->hispeed_freq;
+}
+
+unsigned int cpufreq_interactive_get_hispeed2_freq(int cpu)
+{
+	struct cpufreq_interactive_cpuinfo *pcpu =
+			&per_cpu(cpuinfo, cpu);
+	struct cpufreq_interactive_tunables *tunables;
+
+	if (pcpu && pcpu->policy)
+		tunables = pcpu->policy->governor_data;
+	else
+		return 0;
+
+	if (!tunables)
+		return 0;
+
+	return tunables->hispeed2_freq;
 }
 
 #ifdef CONFIG_ARCH_EXYNOS
