@@ -4186,6 +4186,11 @@ static ssize_t fts_touchkey_led_control(struct device *dev,
 		return size;
 	}
 
+	if (data > 1) {
+		update_fts_touchkey_brightness(&info->client->dev, data);
+	}
+	data = data ? 1 : 0;
+
 	if (data != 0 && data != 1) {
 		tsp_debug_err(true, &info->client->dev, "%s wrong cmd %x\n",
 			__func__, data);

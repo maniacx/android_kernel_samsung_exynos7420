@@ -51,6 +51,10 @@
 #include <linux/power_supply.h>
 #include <linux/firmware.h>
 #include <linux/regulator/consumer.h>
+#ifdef FTS_SUPPORT_TOUCH_KEY
+#include <linux/regulator/driver.h>
+#include <linux/regulator/machine.h>
+#endif
 #include <linux/of_gpio.h>
 #include <linux/sec_sysfs.h>
 
@@ -75,6 +79,13 @@
 static struct i2c_driver fts_i2c_driver;
 
 #ifdef FTS_SUPPORT_TOUCH_KEY
+
+#define BL_STANDARD	3000
+#define BL_MIN		2500
+#define BL_MAX		3300
+
+static unsigned int touchkey_voltage_brightness = BL_STANDARD;
+
 struct fts_touchkey fts_touchkeys[] = {
 	{
 		.value = 0x01,
@@ -119,6 +130,35 @@ void fts_release_all_finger(struct fts_ts_info *info);
 #ifdef CONFIG_SEC_DEBUG_TSP_LOG
 static void dump_tsp_rawdata(struct work_struct *work);
 struct delayed_work * p_debug_work;
+#endif
+
+#ifdef FTS_SUPPORT_TOUCH_KEY
+static void change_fts_touch_key_led_voltage(struct device *dev, int vol_mv)
+{
+	struct regulator *tled_regulator;
+	struct fts_ts_info *info = dev_get_drvdata(dev);
+	const struct fts_i2c_platform_data *pdata = info->board;
+
+	tled_regulator = regulator_get(NULL, pdata->regulator_tk_led);
+	if (IS_ERR(tled_regulator)) {
+		tsp_debug_err(true, dev, "%s: failed to get resource %s\n", __func__,
+		       "touchkey_led");
+		return;
+	}
+	regulator_set_voltage(tled_regulator, vol_mv * 1000, vol_mv * 1000);
+	regulator_put(tled_regulator);
+}
+
+void update_fts_touchkey_brightness(struct device *dev, unsigned int level)
+{
+	if (level > 0 && level < 256) {
+		printk(KERN_DEBUG "[TouchKey-LED] %s: %d\n", __func__, level);
+		touchkey_voltage_brightness = BL_MIN + ((((level * 100 / 255) * (BL_MAX - BL_MIN)) / 100) / 50) * 50;
+		change_fts_touch_key_led_voltage(dev, touchkey_voltage_brightness);
+	} else {
+		tsp_debug_err(true, dev, "[TouchKey-LED] %s: Ignoring brightness : %d\n", __func__, level);
+	}
+}
 #endif
 
 #if (!defined(CONFIG_HAS_EARLYSUSPEND)) && (!defined(CONFIG_PM)) && !defined(USE_OPEN_CLOSE)
@@ -2680,6 +2720,7 @@ static int fts_start_device(struct fts_ts_info *info)
 	fts_release_all_finger(info);
 #ifdef FTS_SUPPORT_TOUCH_KEY
 	fts_release_all_key(info);
+	change_fts_touch_key_led_voltage(&info->client->dev,touchkey_voltage_brightness);
 #endif
 
 	if (info->fts_power_state == FTS_POWER_STATE_LOWPOWER) {
