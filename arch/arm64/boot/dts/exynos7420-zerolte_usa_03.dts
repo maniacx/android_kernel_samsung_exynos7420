@@ -604,7 +604,7 @@
 
 				ldo21_reg: LDO21 {
 					regulator-name = "key_led";
-					regulator-min-microvolt = <3300000>;
+					regulator-min-microvolt = <2500000>;
 					regulator-max-microvolt = <3300000>;
 				};
 
