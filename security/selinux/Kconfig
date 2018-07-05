@@ -131,3 +131,9 @@ config SECURITY_SELINUX_POLICYDB_VERSION_MAX_VALUE
 	  installed under /etc/selinux/$SELINUXTYPE/policy, where
 	  SELINUXTYPE is defined in your /etc/selinux/config.
 
+config SECURITY_SELINUX_PRETEND_ENFORCE
+	bool "NSA SELinux pretend to be Enforced"
+	depends on SECURITY_SELINUX
+	default n
+	help
+	  Pretends to use the "Enforced"-state, regardless the current state
