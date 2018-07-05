@@ -133,10 +133,15 @@ static unsigned long sel_last_ino = SEL_INO_NEXT - 1;
 static ssize_t sel_read_enforce(struct file *filp, char __user *buf,
 				size_t count, loff_t *ppos)
 {
+	int display_state = selinux_enforcing;
 	char tmpbuf[TMPBUFLEN];
 	ssize_t length;
 
-	length = scnprintf(tmpbuf, TMPBUFLEN, "%d", selinux_enforcing);
+#ifdef CONFIG_SECURITY_SELINUX_PRETEND_ENFORCE
+	display_state = 1;
+#endif
+
+	length = scnprintf(tmpbuf, TMPBUFLEN, "%d", display_state);
 	return simple_read_from_buffer(buf, count, ppos, tmpbuf, length);
 }
 
