@@ -675,7 +675,7 @@ static struct ion_handle* pass_to_user(struct ion_handle *handle)
 /* Must hold the client lock */
 static int user_ion_handle_put_nolock(struct ion_handle *handle)
 {
-	int ret;
+	int ret = 0;
 
 	if (--handle->user_ref_count == 0) {
 		ret = ion_handle_put_nolock(handle);
@@ -1049,9 +1049,8 @@ static int ion_debug_client_show(struct seq_file *s, void *unused)
 		return -EINVAL;
 	}
 
-	seq_printf(s, "%16.s %16.s %4.s %16.s %4.s %10.s %8.s %9.s\n",
-			"buffer", "task", "pid", "thread", "tid", "size",
-			"# procs", "flag");
+	seq_printf(s, "%16.s %4.s %16.s %4.s %10.s %8.s %9.s\n",
+		   "task", "pid", "thread", "tid", "size", "# procs", "flag");
 	seq_printf(s, "----------------------------------------------"
 			"--------------------------------------------\n");
 
@@ -1066,8 +1065,8 @@ static int ion_debug_client_show(struct seq_file *s, void *unused)
 			names[id] = buffer->heap->name;
 		sizes[id] += buffer->size;
 		sizes_pss[id] += (buffer->size / buffer->handle_count);
-		seq_printf(s, "%16p %16.s %4u %16.s %4u %10zu %8d %9lx\n",
-				buffer, buffer->task_comm, buffer->pid,
+		seq_printf(s, "%16.s %4u %16.s %4u %10zu %8d %9lx\n",
+			   buffer->task_comm, buffer->pid,
 				buffer->thread_comm, buffer->tid, buffer->size,
 				buffer->handle_count, buffer->flags);
 	}
@@ -1604,13 +1603,13 @@ struct ion_handle *ion_import_dma_buf(struct ion_client *client, int fd)
 		mutex_unlock(&client->lock);
 		goto end;
 	}
-	mutex_unlock(&client->lock);
 
 	handle = ion_handle_create(client, buffer);
-	if (IS_ERR(handle))
+	if (IS_ERR(handle)){
+		mutex_unlock(&client->lock);
 		goto end;
+	}
 
-	mutex_lock(&client->lock);
 	ret = ion_handle_add(client, handle);
 	mutex_unlock(&client->lock);
 	if (ret) {
