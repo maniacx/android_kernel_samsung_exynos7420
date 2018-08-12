@@ -1187,6 +1187,31 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 	return 0;
 }
 
+static void __dwc3_gadget_ep_zlp_complete(struct usb_ep *ep,struct usb_request *request)
+{
+         dwc3_gadget_ep_free_request(ep, request);
+}
+ 
+static int __dwc3_gadget_ep_queue_zlp(struct dwc3 *dwc, struct dwc3_ep *dep)
+{
+        struct dwc3_request             *req;
+        struct usb_request              *request;
+        struct usb_ep                   *ep = &dep->endpoint;
+ 
+        dev_vdbg(dwc->dev, "queing request ZLP \n");
+         request = dwc3_gadget_ep_alloc_request(ep, GFP_ATOMIC);
+         if (!request)
+                 return -ENOMEM;
+ 
+         request->length = 0;
+         request->buf = dwc->zlp_buf;
+         request->complete = __dwc3_gadget_ep_zlp_complete;
+ 
+         req = to_dwc3_request(request);
+ 
+         return __dwc3_gadget_ep_queue(dep, req);
+}
+
 static int dwc3_gadget_ep_queue(struct usb_ep *ep, struct usb_request *request,
 	gfp_t gfp_flags)
 {
@@ -1210,6 +1235,18 @@ static int dwc3_gadget_ep_queue(struct usb_ep *ep, struct usb_request *request,
 			request, ep->name, request->length);
 
 	ret = __dwc3_gadget_ep_queue(dep, req);
+	
+	/*
+	 * Okay, here's the thing, if gadget driver has requested for a ZLP by
+	 * setting request->zero, instead of doing magic, we will just queue an
+	 * extra usb_request ourselves so that it gets handled the same way as
+	 * any other request.
+ */
+	if (ret == 0 && request->zero && request->length &&
+	   (request->length % ep->maxpacket == 0)) {
+	   ret = __dwc3_gadget_ep_queue_zlp(dwc, dep);
+	}
+	
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	return ret;
@@ -2901,11 +2938,23 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 		goto err3;
 	}
 
+	dwc->zlp_buf = kzalloc(DWC3_ZLP_BUF_SIZE, GFP_KERNEL);
+	if (!dwc->zlp_buf) {
+		ret = -ENOMEM;
+		goto err4;
+	}
+	
 	dwc->gadget.ops			= &dwc3_gadget_ops;
 	dwc->gadget.max_speed		= dwc->maximum_speed;
 	dwc->gadget.speed		= USB_SPEED_UNKNOWN;
 	dwc->gadget.sg_supported	= true;
 	dwc->gadget.name		= "dwc3-gadget";
+
+	/*
+	 * Per databook, DWC3 needs buffer size to be aligned to MaxPacketSize
+	 * on ep out.
+	 */
+	dwc->gadget.quirk_ep_out_aligned_size = true;
 
 	/*
 	 * REVISIT: Here we should clear all pending IRQs to be
@@ -2936,6 +2985,7 @@ err5:
 	usb_del_gadget_udc(&dwc->gadget);
 err4:
 	dwc3_gadget_free_endpoints(dwc);
+	kfree(dwc->zlp_buf);
 	dma_free_coherent(dwc->dev, DWC3_EP0_BOUNCE_SIZE,
 			dwc->ep0_bounce, dwc->ep0_bounce_addr);
 
@@ -2969,7 +3019,7 @@ void dwc3_gadget_exit(struct dwc3 *dwc)
 			dwc->ep0_bounce, dwc->ep0_bounce_addr);
 
 	kfree(dwc->setup_buf);
-
+	kfree(dwc->zlp_buf);
 	dma_free_coherent(dwc->dev, sizeof(*dwc->ep0_trb),
 			dwc->ep0_trb, dwc->ep0_trb_addr);
 
