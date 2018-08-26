@@ -49,7 +49,6 @@
 #include "ssp_dev.h"
 #include "ssp_firmware.h"
 #include "ssp_iio.h"
-#include "ssp_misc.h"
 #include "ssp_sensorhub.h"
 #include "ssp_spi.h"
 #include "ssp_sysfs.h"
@@ -532,7 +531,8 @@ struct ssp_big {
 	u32 length;
 	u32 addr;
 };
-
+void report_shake_cam_data(struct ssp_data *data,
+	struct sensor_value *shake_cam_data);
 u64 get_current_timestamp(void);
 u64 get_kernel_timestamp(void);
 #endif
